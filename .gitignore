@@ -1,0 +1,9 @@
+0040_qa.xls
+0040_qa.xlsx
+~$*
+tools/.work.*
+tools/.last_processed.json
+tools/auto_update.log
+incoming/processed/*
+!incoming/processed/.gitkeep
+last_build.txt
