@@ -51,8 +51,21 @@
   <div class="sl-row"><span class="sl-t">📅 اليوم</span><span id="slDays" class="chips"></span></div>
   <div class="sl-row"><span class="sl-t">🧵 العائلة</span><span id="slFams" class="chips"></span></div>
   <div class="sl-row"><span class="sl-t">🔎 فلاتر</span><span id="slMkt" class="chips"></span><span class="sl-t auto">🔌 الموصل</span><span id="slCon" class="chips"></span><span class="sl-t auto">✅ الجودة</span><span id="slQc" class="chips"></span></div>
-  <div class="sl-row"><span class="sl-t">👤 العميل</span><select id="selCust" class="sel"></select><span class="sl-t auto">⚙️ الماكينة</span><select id="selMac" class="sel"></select><span class="filterbar" id="filterBar"></span></div>
+  <div class="sl-row">
+    <span class="sl-t">📦 أمر التشغيل</span>
+    <div class="search-wrap">
+      <span class="search-icon">🔍</span>
+      <input type="text" id="inpWo" class="inp-search" placeholder="ابحث برقم أمر التشغيل (WO)..." list="woList" autocomplete="off" spellcheck="false" dir="auto">
+      <button type="button" id="btnWoClear" class="search-clear" title="مسح البحث" style="display:none">✕</button>
+      <datalist id="woList"></datalist>
+    </div>
+    <span class="sl-t auto">👤 العميل</span><select id="selCust" class="sel"></select>
+    <span class="sl-t auto">⚙️ الماكينة</span><select id="selMac" class="sel"></select>
+    <span class="filterbar" id="filterBar"></span>
+  </div>
 </div>
+
+<div id="woSummary" class="wo-summary" style="display:none"></div>
 
 <div class="grid">
   <div class="card c8"><h3>📈 الإنتاج التراكمي مقابل الخطة</h3><div class="hint" id="cumHint">الخط الأزرق = الفعلي التراكمي (طن كامل: موصلات + Screen + Armour) · الأصفر المتقطع = الخطة موزعة على أيام الشهر · hover للتفاصيل</div><div id="cumChart"></div><div class="legend-row"><span><b style="background:#1976d2"></b>الفعلي التراكمي</span><span id="lgPlan"><b style="background:#d97706"></b>الخطة التراكمية</span></div></div>
@@ -63,7 +76,19 @@
   <div class="card c6"><h3>⚙️ الماكينات</h3><div class="hint">طن — اضغط على الماكينة للفلترة</div><div id="macBars"></div></div>
   <div class="card c6"><h3>🧪 المواد — AL / CU / Screen / Armour</h3><div class="hint">طن ونسبتها من الإجمالي</div><div id="matBars"></div></div>
   <div class="card c6"><h3>✅ حالة الجودة (QC)</h3><div class="hint">عدد الطرود — اضغط للفلترة</div><div id="qcDonut"></div></div>
-  <div class="card c12"><h3>📋 تفاصيل الطرود</h3><div class="hint" id="tblHint"></div><div id="tableWrap"></div><div class="pager" id="pager"></div></div>
+  <div class="card c12">
+    <div class="card-head">
+      <h3>📋 تفاصيل الطرود</h3>
+      <div class="search-wrap tbl-search">
+        <span class="search-icon">🔍</span>
+        <input type="text" id="tblInpWo" class="inp-search" placeholder="بحث سريع بأمر التشغيل..." list="woList" autocomplete="off" spellcheck="false" dir="auto">
+        <button type="button" id="btnTblWoClear" class="search-clear" title="مسح البحث" style="display:none">✕</button>
+      </div>
+    </div>
+    <div class="hint" id="tblHint"></div>
+    <div id="tableWrap"></div>
+    <div class="pager" id="pager"></div>
+  </div>
 </div>
 
 <footer>

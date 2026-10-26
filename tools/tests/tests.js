@@ -42,6 +42,47 @@ const kmv = A.computeKPIs(A.filteredRows());
 near("MV filter", kmv.totalT, k.famT.MV);
 A.state.fams.clear();
 
+// --- order (WO) search tests ---
+A.state.wo = "803/26/01";
+const r803 = A.filteredRows();
+eq("search exact wo returns rows", r803.length > 0, true);
+eq("all rows match exact wo", r803.every(r => r.wo === "803/26/01"), true);
+
+A.state.wo = "803";
+const rPartial = A.filteredRows();
+eq("partial search wo returns rows", rPartial.length >= r803.length, true);
+eq("partial rows contain 803", rPartial.every(r => r.wo.includes("803")), true);
+
+// Arabic numerals search
+A.state.wo = "٨٠٣";
+const rArabic = A.filteredRows();
+eq("arabic numerals wo search matches ascii", rArabic.length, rPartial.length);
+
+// whitespace & slash tolerance
+A.state.wo = " 803 / 26 / 01 ";
+const rSpaces = A.filteredRows();
+eq("wo search with slashes and spaces", rSpaces.length, r803.length);
+
+// order totals calculation
+A.state.wo = "803/26/01";
+const rows803 = A.filteredRows();
+const tTons = rows803.reduce((s, r) => s + r.tt, 0);
+const tMeters = rows803.reduce((s, r) => s + r.q, 0);
+near("order 803/26/01 total tons", tTons, 33.392, 0.01);
+eq("order 803/26/01 total meters", tMeters, 10891);
+eq("order 803/26/01 total packs", rows803.length, 27);
+
+// renderWoSummary mock test
+const mockEl = { style: {}, innerHTML: "" };
+globalThis.document = { getElementById: id => (id === "woSummary" ? mockEl : null) };
+A.renderWoSummary(rows803, A.computeKPIs(rows803));
+eq("wo summary rendered visible", mockEl.style.display, "block");
+eq("wo summary has tonnage", mockEl.innerHTML.includes("33.392"), true);
+eq("wo summary has meters", mockEl.innerHTML.includes("10,891"), true);
+delete globalThis.document;
+
+A.state.wo = "";
+
 // --- month helpers ---
 eq("month key", A.cfgMonthKey({ year: 2026, month_num: 10 }), "2026-10");
 eq("month label", A.monthLabel("2026-10"), "أكتوبر 2026");

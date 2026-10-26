@@ -23,8 +23,31 @@ const MAT_COLOR = {AL:"#8fa3bd",CU:"#c2570b",SCR:"#7c3aed",ARM:"#0d9488"};
 const QC_LABEL = {OK:"OK — مقبول",Hold:"Hold — موقوف",P:"بدون حالة"};
 const QC_COLOR = {OK:"#0b8a4b",Hold:"#c77700",P:"#64748b"};
 
-const state = {days:new Set(),fams:new Set(),cust:"",mac:"",mkt:"all",con:"all",qc:"all"};
+const state = {days:new Set(),fams:new Set(),cust:"",mac:"",mkt:"all",con:"all",qc:"all",wo:""};
 const tstate = {page:1,pageSize:50,sortKey:"d",sortDir:1};
+
+function normWo(s){
+  if(!s)return "";
+  return String(s)
+    .trim()
+    .replace(/[٠-٩]/g, d=>"٠١٢٣٤٥٦٧٨٩".indexOf(d))
+    .toLowerCase()
+    .replace(/\s*\/\s*/g, "/");
+}
+
+function setWoSearch(val){
+  state.wo = (val || "").trim();
+  const inp = $("inpWo");
+  const tblInp = $("tblInpWo");
+  const btnC = $("btnWoClear");
+  const btnTblC = $("btnTblWoClear");
+  if(inp && inp !== document.activeElement && inp.value !== state.wo) inp.value = state.wo;
+  if(tblInp && tblInp !== document.activeElement && tblInp.value !== state.wo) tblInp.value = state.wo;
+  if(btnC) btnC.style.display = (inp && inp.value) ? "inline-block" : "none";
+  if(btnTblC) btnTblC.style.display = (tblInp && tblInp.value) ? "inline-block" : "none";
+  tstate.page = 1;
+  renderAll();
+}
 
 const nf=(x,d=1)=>(x||0).toLocaleString("en-US",{minimumFractionDigits:d,maximumFractionDigits:d});
 const n0=x=>Math.round(x||0).toLocaleString("en-US");
@@ -68,6 +91,7 @@ function computeKPIs(rows){
 }
 
 function filteredRows(){
+  const swo = normWo(state.wo);
   return DATA.filter(r=>
     (state.days.size===0||state.days.has(r.d))&&
     (state.fams.size===0||state.fams.has(r.fam))&&
@@ -75,7 +99,8 @@ function filteredRows(){
     (!state.mac||r.mac===state.mac)&&
     (state.mkt==="all"||r.exp===(state.mkt==="exp"?"Y":"N"))&&
     (state.con==="all"||r.con===state.con)&&
-    (state.qc==="all"||r.qc===state.qc));
+    (state.qc==="all"||r.qc===state.qc)&&
+    (!swo||normWo(r.wo).includes(swo)));
 }
 
 function groupTons(rows,keyFn){const m=new Map();rows.forEach(r=>{const kk=keyFn(r);m.set(kk,(m.get(kk)||0)+r.tt);});return m;}
@@ -212,7 +237,11 @@ function dailyChart(k){
 /* ---------- KPIs ---------- */
 function renderKPIs(k){
   $("kActual").textContent=nf(k.totalT,1);
-  if(HAS_PLAN){
+  if(state.wo){
+    $("kActualS").innerHTML=`إجمالي أمر التشغيل <b>${esc(state.wo)}</b> (${n0(k.packs)} طرد)`;
+    $("kActualBar").style.width="100%";
+    $("kActualMark").style.display="none";
+  }else if(HAS_PLAN){
     $("kActualS").innerHTML=`من خطة <b>${n0(PLAN)}</b> طن (${pf(k.donePct)}) · العلامة البيضاء = المتوقع بعد ${k.maxDay} أيام (${pf(k.expected)})`;
     $("kActualBar").style.width=Math.min(100,k.ratio*100)+"%";
     $("kActualMark").style.display="";
@@ -221,7 +250,12 @@ function renderKPIs(k){
     $("kActualS").innerHTML=`${n0(k.packs)} طرد · سجل الخطة في <b>plan.json</b> لمتابعة التحقيق`;
     $("kActualBar").style.width="0%";$("kActualMark").style.display="none";
   }
-  if(!HAS_PLAN){
+  if(state.wo){
+    const avgW = k.packs ? k.totalT / k.packs : 0;
+    $("kRem").textContent = nf(avgW, 3);
+    $("kRemS").innerHTML = "متوسط وزن الطرد الواحد (طن)";
+    $("kRemBar").style.width = "0%";
+  }else if(!HAS_PLAN){
     $("kRem").textContent="—";
     $("kRemS").innerHTML="أدخل خطة الشهر في <b>plan.json</b>";
     $("kRemBar").style.width="0%";
@@ -239,18 +273,35 @@ function renderKPIs(k){
         (k.feasible?`<span class="good">ممكن بالوتيرة الحالية ✓</span>`:`<span class="bad">محتاج تسريع ${pf(k.speedUpPct)} عن الحالي</span>`);
     }
   }
-  if(HAS_PLAN){
+  if(state.wo){
+    const mTot = DATA.reduce((s,r)=>s+r.tt, 0) || 1;
+    const share = (k.totalT / mTot * 100).toFixed(1);
+    $("kRatio").innerHTML = `<span class="good">${share}%</span>`;
+    $("kRatioS").innerHTML = `حصة الأوردر من إجمالي إنتاج الشهر (${nf(mTot, 1)} طن)`;
+  }else if(HAS_PLAN){
     const behind=k.behind>0.5;
     $("kRatio").innerHTML=`<span class="${behind?"bad":"good"}">${pf(k.ratio)}</span>`;
     $("kRatioS").innerHTML=`المتوقع في اليوم ${k.maxDay}: ${pf(k.expected)} — <span class="${behind?"bad":"good"}">${behind?"متأخر":"متقدم"} ${nf(Math.abs(k.behind),1)} طن</span>`;
   }else{
     $("kRatio").textContent="—";$("kRatioS").textContent="بدون خطة مسجلة";
   }
-  const gap=k.dailyAvg-k.paceReq;
-  $("kPace").textContent=nf(k.dailyAvg,1);
-  $("kPaceS").innerHTML=(HAS_PLAN?`المطلوب للخطة: ${nf(k.paceReq,1)} طن/يوم — <span class="${gap>=0?"good":"bad"}">${gap>=0?"+":""}${nf(gap,1)}</span>`:`معدل ${MDAYS} يوم`)+` · ${k.nDays} أيام إنتاج`+(HAS_PLAN&&k.remaining>0?` · لإنهاء الخطة: <b>${nf(k.paceToFinish,1)}</b> طن/يوم`:"");
-  $("kFc").textContent=n0(k.forecast);
-  $("kFcS").innerHTML=HAS_PLAN?`على المعدل الحالي = <b class="${k.forecastRatio>=1?"good":"warn"}">${pf(k.forecastRatio)}</b> من الخطة · باقي ${n0(k.remaining)} طن`:`إسقاط على ${MDAYS} يوم بنفس الوتيرة`;
+  if(state.wo){
+    const daysN = k.days.size || 1;
+    $("kPace").textContent = nf(k.totalT / daysN, 2);
+    $("kPaceS").innerHTML = `معدل إنتاج الأوردر في أيام تشغيله (<b>${daysN}</b> أيام)`;
+  }else{
+    const gap=k.dailyAvg-k.paceReq;
+    $("kPace").textContent=nf(k.dailyAvg,1);
+    $("kPaceS").innerHTML=(HAS_PLAN?`المطلوب للخطة: ${nf(k.paceReq,1)} طن/يوم — <span class="${gap>=0?"good":"bad"}">${gap>=0?"+":""}${nf(gap,1)}</span>`:`معدل ${MDAYS} يوم`)+` · ${k.nDays} أيام إنتاج`+(HAS_PLAN&&k.remaining>0?` · لإنهاء الخطة: <b>${nf(k.paceToFinish,1)}</b> طن/يوم`:"");
+  }
+  if(state.wo){
+    const totMeters = Math.round(k.km * 1000);
+    $("kFc").textContent = n0(totMeters);
+    $("kFcS").innerHTML = `إجمالي أطوال الأوردر بالأمتار (${nf(k.km, 2)} كم)`;
+  }else{
+    $("kFc").textContent=n0(k.forecast);
+    $("kFcS").innerHTML=HAS_PLAN?`على المعدل الحالي = <b class="${k.forecastRatio>=1?"good":"warn"}">${pf(k.forecastRatio)}</b> من الخطة · باقي ${n0(k.remaining)} طن`:`إسقاط على ${MDAYS} يوم بنفس الوتيرة`;
+  }
   $("kKm").textContent=nf(k.km,1);
   $("kKmS").innerHTML=`${n0(k.packs)} طرد · ${k.wos.size} أمر تشغيل`;
   const expShare=k.totalT>0?k.expT/k.totalT:0;
@@ -270,7 +321,10 @@ function chipEl(label,active,dim,onclick){
   b.innerHTML=label;b.onclick=onclick;return b;
 }
 function toggleIn(set,v){set.has(v)?set.delete(v):set.add(v);renderAll();}
-function resetFilters(){state.days.clear();state.fams.clear();state.cust="";state.mac="";state.mkt="all";state.con="all";state.qc="all";tstate.page=1;renderAll();}
+function resetFilters(){
+  resetFiltersSilent();
+  renderAll();
+}
 
 function renderSlicers(){
   const dayCounts=groupCount(DATA,r=>r.d);
@@ -295,6 +349,11 @@ function renderSlicers(){
   qc.forEach(([v,l])=>sq.appendChild(chipEl(l,state.qc===v,false,()=>{state.qc=v;renderAll();})));
   $("selCust").value=state.cust;
   $("selMac").value=state.mac;
+  const inp=$("inpWo"), tblInp=$("tblInpWo"), b1=$("btnWoClear"), b2=$("btnTblWoClear");
+  if(inp && inp !== document.activeElement) inp.value = state.wo;
+  if(tblInp && tblInp !== document.activeElement) tblInp.value = state.wo;
+  if(b1) b1.style.display = state.wo ? "inline-block" : "none";
+  if(b2) b2.style.display = state.wo ? "inline-block" : "none";
 }
 
 function renderFilterBar(rows,k){
@@ -305,6 +364,7 @@ function renderFilterBar(rows,k){
     c.querySelector("b").onclick=()=>{clear();renderAll();};
     fb.appendChild(c);
   };
+  if(state.wo)add("أمر تشغيل: "+state.wo,()=>setWoSearch(""));
   if(state.days.size)add("أيام: "+[...state.days].sort((a,b)=>a-b).join("، "),()=>state.days.clear());
   if(state.fams.size)add("عائلات: "+[...state.fams].join("، "),()=>state.fams.clear());
   if(state.mkt!=="all")add(state.mkt==="exp"?"تصدير":"محلي",()=>state.mkt="all");
@@ -340,14 +400,30 @@ function renderTable(rows,k){
     h+=`<th data-k="${c.k}">${c.l}${arrow}</th>`;
   });
   h+="</tr></thead><tbody>";
-  pageRows.forEach(r=>{
-    h+=`<tr><td>${r.d}</td><td>${esc(r.pk)}</td><td>${esc(r.wo)}</td><td>${esc(r.cu)}</td>`+
-       `<td><span class="bdg" style="background:${FAM_COLOR[r.fam]||"#64748b"}22;color:${FAM_COLOR[r.fam]||"#94a3b8"}">${esc(r.fam)}</span></td>`+
-       `<td>${esc(r.vs)}</td><td>${esc(r.mac)}</td><td class="num">${n0(r.q)}</td><td class="num">${nf(r.tt,3)}</td>`+
-       `<td><span class="bdg" style="background:${r.exp==="Y"?"#0f9d5822;color:#0b8a4b":"#1976d222;color:#1266b0"}">${r.exp==="Y"?"Export":"Local"}</span></td>`+
-       `<td><span class="bdg" style="background:${QC_COLOR[r.qc]}22;color:${QC_COLOR[r.qc]}">${r.qc==="OK"?"OK":r.qc==="Hold"?"Hold":"—"}</span></td></tr>`;
-  });
-  h+="</tbody></table>";
+  if(pageRows.length===0){
+    h+=`<tr><td colspan="${COLS.length}" style="text-align:center;padding:28px;color:var(--mut);font-size:13px">🔍 لا توجد طرود مطابقة للبحث أو الفلاتر المحددة</td></tr>`;
+  }else{
+    pageRows.forEach(r=>{
+      h+=`<tr><td>${r.d}</td><td>${esc(r.pk)}</td><td><button type="button" class="wo-link" title="اضغط للفلترة بأمر التشغيل ${esc(r.wo)}" data-wo="${esc(r.wo)}">${esc(r.wo)}</button></td><td>${esc(r.cu)}</td>`+
+         `<td><span class="bdg" style="background:${FAM_COLOR[r.fam]||"#64748b"}22;color:${FAM_COLOR[r.fam]||"#94a3b8"}">${esc(r.fam)}</span></td>`+
+         `<td>${esc(r.vs)}</td><td>${esc(r.mac)}</td><td class="num">${n0(r.q)}</td><td class="num">${nf(r.tt,3)}</td>`+
+         `<td><span class="bdg" style="background:${r.exp==="Y"?"#0f9d5822;color:#0b8a4b":"#1976d222;color:#1266b0"}">${r.exp==="Y"?"Export":"Local"}</span></td>`+
+         `<td><span class="bdg" style="background:${QC_COLOR[r.qc]}22;color:${QC_COLOR[r.qc]}">${r.qc==="OK"?"OK":r.qc==="Hold"?"Hold":"—"}</span></td></tr>`;
+    });
+  }
+  h+="</tbody>";
+  if(rows.length>0){
+    const totQ = rows.reduce((s,r)=>s+r.q, 0);
+    const totTT = rows.reduce((s,r)=>s+r.tt, 0);
+    const totKm = totQ / 1000;
+    h+=`<tfoot><tr>`+
+       `<td colspan="7"><b>الإجمالي (${n0(rows.length)} طرد${state.wo?` لأمر التشغيل ${esc(state.wo)}`:""})</b></td>`+
+       `<td class="num"><b>${n0(totQ)} م</b></td>`+
+       `<td class="num"><b>${nf(totTT,3)} طن</b></td>`+
+       `<td colspan="2"><b>${nf(totKm,2)} كم</b></td>`+
+       `</tr></tfoot>`;
+  }
+  h+="</table>";
   $("tableWrap").innerHTML=h;
   $("tableWrap").querySelectorAll("th").forEach(th=>{
     th.onclick=()=>{
@@ -356,7 +432,15 @@ function renderTable(rows,k){
       renderTable(rows,k);
     };
   });
-  $("tblHint").textContent=`عرض ${sorted.length?start+1:0}–${Math.min(start+tstate.pageSize,sorted.length)} من ${sorted.length} طرد (${nf(k.totalT,1)} طن · ${nf(k.km,1)} كم) — اضغط على عنوان أي عمود للترتيب`;
+  $("tableWrap").querySelectorAll(".wo-link").forEach(btn=>{
+    btn.onclick=e=>{
+      e.stopPropagation();
+      setWoSearch(btn.dataset.wo||"");
+    };
+  });
+  $("tblHint").textContent=`عرض ${sorted.length?start+1:0}–${Math.min(start+tstate.pageSize,sorted.length)} من ${sorted.length} طرد (${nf(k.totalT,1)} طن · ${nf(k.km,1)} كم)`+
+    (state.wo?` · مفلتر بأمر التشغيل: "${state.wo}"`:"")+
+    ` — اضغط على عنوان أي عمود للترتيب أو اضغط رقم أمر التشغيل لفلترته`;
   const pg=$("pager");pg.innerHTML="";
   const prev=document.createElement("button");prev.textContent="→ السابق";prev.disabled=tstate.page<=1;
   prev.onclick=()=>{tstate.page--;renderTable(rows,k);};
@@ -561,7 +645,12 @@ function rebuildMonthSelect(){
   else sel.value=MONTHS[ACTIVE]?ACTIVE:(keys[0]||"__new__");
 }
 function resetFiltersSilent(){
-  state.days.clear();state.fams.clear();state.cust="";state.mac="";state.mkt="all";state.con="all";state.qc="all";tstate.page=1;
+  state.days.clear();state.fams.clear();state.cust="";state.mac="";state.mkt="all";state.con="all";state.qc="all";state.wo="";tstate.page=1;
+  const inp=$("inpWo"), tblInp=$("tblInpWo"), b1=$("btnWoClear"), b2=$("btnTblWoClear");
+  if(inp)inp.value="";
+  if(tblInp)tblInp.value="";
+  if(b1)b1.style.display="none";
+  if(b2)b2.style.display="none";
 }
 function loadMonthEntry(key,silent){
   const e=MONTHS[key];if(!e)return false;
@@ -647,6 +736,141 @@ function applyPlanUI(){
   }
 }
 
+/* ---------- order summary ---------- */
+function renderWoSummary(rows, k){
+  if(typeof document === "undefined") return;
+  const el = $("woSummary");
+  if(!el) return;
+  if(!state.wo){
+    el.style.display = "none";
+    el.innerHTML = "";
+    return;
+  }
+  if(!rows.length){
+    el.style.display = "block";
+    el.innerHTML = `
+      <div class="wo-sum-head">
+        <div class="wo-sum-title-row">
+          <span class="wo-sum-badge">📦 بحث أمر التشغيل</span>
+          <span class="wo-sum-h">${esc(state.wo)}</span>
+        </div>
+        <button type="button" class="wo-sum-close" onclick="setWoSearch('')">✕ مسح البحث</button>
+      </div>
+      <div style="color:var(--mut);padding:10px 0;font-size:13px">
+        ⚠️ لا توجد طرود مسجلة لأمر التشغيل "<b>${esc(state.wo)}</b>" في بيانات هذا الشهر (أو تم استبعادها بسبب الفلاتر الأخرى).
+      </div>
+    `;
+    return;
+  }
+  const matchingWos = Array.from(new Set(rows.map(r=>r.wo))).sort((a,b)=>a.localeCompare(b,"en",{numeric:true}));
+  const isSingleWo = matchingWos.length === 1;
+  const targetWo = isSingleWo ? matchingWos[0] : state.wo;
+  const totT = rows.reduce((s,r)=>s+r.tt, 0);
+  const totCond = rows.reduce((s,r)=>s+r.ct, 0);
+  const totScr = rows.reduce((s,r)=>s+r.st, 0);
+  const totArm = rows.reduce((s,r)=>s+r.at, 0);
+  const totM = rows.reduce((s,r)=>s+r.q, 0);
+  const totKm = totM / 1000;
+  const totPacks = rows.length;
+  const avgM = totPacks ? Math.round(totM / totPacks) : 0;
+  const avgT = totPacks ? (totT / totPacks) : 0;
+  const custs = Array.from(new Set(rows.map(r=>r.cu).filter(Boolean)));
+  const specs = Array.from(new Set(rows.map(r=>r.vs).filter(Boolean)));
+  const fams = Array.from(new Set(rows.map(r=>r.fam).filter(Boolean)));
+  const conds = Array.from(new Set(rows.map(r=>r.con).filter(Boolean)));
+  const mkts = Array.from(new Set(rows.map(r=>r.exp).filter(Boolean)));
+  const days = Array.from(new Set(rows.map(r=>r.d))).sort((a,b)=>a-b);
+  const okPacks = rows.filter(r=>r.qc==="OK").length;
+  const holdPacks = rows.filter(r=>r.qc==="Hold").length;
+  const pPacks = totPacks - okPacks - holdPacks;
+  const macMap = groupCount(rows, r=>r.mac);
+  const macTons = groupTons(rows, r=>r.mac);
+  const macList = topFrom(macTons, macTons.size);
+  const monthTotalT = DATA.reduce((s,r)=>s+r.tt, 0) || 1;
+  const monthShare = (totT / monthTotalT * 100).toFixed(1);
+
+  let h = `
+    <div class="wo-sum-head">
+      <div>
+        <div class="wo-sum-title-row">
+          <span class="wo-sum-badge">${isSingleWo ? "📦 ملخص أمر التشغيل" : "🔍 نتائج بحث أمر التشغيل"}</span>
+          <span class="wo-sum-h">${esc(targetWo)}</span>
+          ${!isSingleWo ? `<span class="wo-sum-tag" style="background:#fef3c7;color:#92400e;border-color:#fcd34d">${matchingWos.length} أوامر مطابقة</span>` : ""}
+        </div>
+        <div class="wo-sum-tags">
+          ${custs.length ? `<span class="wo-sum-tag">🏢 ${esc(custs.join(" · "))}</span>` : ""}
+          ${specs.length ? `<span class="wo-sum-tag">⚡ ${esc(specs.slice(0, 3).join(" | "))}${specs.length>3?" ...":""}</span>` : ""}
+          ${fams.length ? `<span class="wo-sum-tag">🧵 ${esc(fams.join("، "))}</span>` : ""}
+          ${conds.length ? `<span class="wo-sum-tag">🔌 ${conds.map(c=>c==="A"?"AL ألومنيوم":c==="C"?"CU نحاس":c).join("، ")}</span>` : ""}
+          ${mkts.length ? `<span class="wo-sum-tag">${mkts.map(m=>m==="Y"?"🌍 Export":"🏠 Local").join("، ")}</span>` : ""}
+        </div>
+      </div>
+      <button type="button" class="wo-sum-close" onclick="setWoSearch('')" title="إلغاء فلترة الأوردر">✕ إلغاء الفلترة</button>
+    </div>
+
+    <div class="wo-stat-grid">
+      <div class="wo-stat highlight">
+        <div class="wo-stat-lbl">⚖️ إجمالي الإنتاج الفعلي</div>
+        <div class="wo-stat-val">${nf(totT, 3)} <span class="u">طن</span></div>
+        <div class="wo-stat-sub">يمثل <b>${monthShare}%</b> من إجمالي إنتاج الشهر</div>
+      </div>
+      <div class="wo-stat">
+        <div class="wo-stat-lbl">📏 إجمالي الأطوال</div>
+        <div class="wo-stat-val">${n0(totM)} <span class="u">متر</span></div>
+        <div class="wo-stat-sub">يعادل <b>${nf(totKm, 2)}</b> كم</div>
+      </div>
+      <div class="wo-stat">
+        <div class="wo-stat-lbl">🥁 عدد الطرود المنتجة</div>
+        <div class="wo-stat-val">${n0(totPacks)} <span class="u">طرد</span></div>
+        <div class="wo-stat-sub">متوسط الطرد: <b>${n0(avgM)}</b> م · <b>${nf(avgT, 3)}</b> طن</div>
+      </div>
+      <div class="wo-stat">
+        <div class="wo-stat-lbl">✅ حالة الجودة QC</div>
+        <div class="wo-stat-val">${holdPacks>0 ? `<span class="warn">${holdPacks} Hold</span>` : `<span class="good">${okPacks} OK</span>`}</div>
+        <div class="wo-stat-sub">${okPacks} مقبول OK · ${holdPacks} موقوف Hold${pPacks?` · ${pPacks} بدون حالة`:""}</div>
+      </div>
+      <div class="wo-stat">
+        <div class="wo-stat-lbl">📅 أيام التشغيل</div>
+        <div class="wo-stat-val">${days.length} <span class="u">أيام</span></div>
+        <div class="wo-stat-sub">أيام: ${days.slice(0, 10).join("، ")}${days.length>10?" ...":""}</div>
+      </div>
+    </div>
+
+    <div class="wo-breakdowns">
+      <div class="wo-b-box">
+        <div class="wo-b-title">🧪 تفصيل الأوزان والمعادن</div>
+        <div class="wo-b-chips">
+          <span class="wo-b-chip">الموصل: <b>${nf(totCond, 3)} طن</b> (${totT>0?pf(totCond/totT):"—"})</span>
+          <span class="wo-b-chip">Screen: <b>${nf(totScr, 3)} طن</b> (${totT>0?pf(totScr/totT):"—"})</span>
+          <span class="wo-b-chip">Armour: <b>${nf(totArm, 3)} طن</b> (${totT>0?pf(totArm/totT):"—"})</span>
+        </div>
+      </div>
+
+      <div class="wo-b-box">
+        <div class="wo-b-title">⚙️ الماكينات المشغلة (${macList.length})</div>
+        <div class="wo-b-chips">
+          ${macList.map(([m, t])=>`<span class="wo-b-chip">ماكينة <b>${esc(m)}</b>: ${macMap.get(m)} طرد (${nf(t, 2)} طن)</span>`).join("")}
+        </div>
+      </div>
+
+      ${!isSingleWo ? `
+      <div class="wo-b-box" style="grid-column: 1 / -1">
+        <div class="wo-b-title">📋 تفصيل أوامر التشغيل المطابقة (اضغط للتخصيص):</div>
+        <div class="wo-b-chips">
+          ${matchingWos.map(w => {
+            const wRows = rows.filter(r=>r.wo===w);
+            const wT = wRows.reduce((s,r)=>s+r.tt, 0);
+            return `<button type="button" class="wo-b-chip clickable" onclick="setWoSearch('${esc(w)}')"><b>${esc(w)}</b>: ${wRows.length} طرد · ${nf(wT, 2)} طن</button>`;
+          }).join("")}
+        </div>
+      </div>
+      ` : ""}
+    </div>
+  `;
+  el.innerHTML = h;
+  el.style.display = "block";
+}
+
 /* ---------- main ---------- */
 function updateMeta(){
   const bg=$("bGen");if(bg)bg.textContent=CONFIG.generated||"—";
@@ -659,11 +883,23 @@ function renderAll(){
   renderKPIs(k);
   renderSlicers();
   renderFilterBar(rows,k);
+  renderWoSummary(rows,k);
   renderCharts(rows,k);
   renderTable(rows,k);
 }
 
+function buildWoDatalist(){
+  const dl=$("woList");
+  if(!dl)return;
+  const wos=Array.from(new Set(DATA.map(r=>r.wo).filter(Boolean)))
+    .sort((a,b)=>a.localeCompare(b,"en",{numeric:true}));
+  let h="";
+  wos.forEach(w=>{h+=`<option value="${esc(w)}"></option>`;});
+  dl.innerHTML=h;
+}
+
 function buildSelects(){
+  buildWoDatalist();
   const custT=groupTons(DATA,r=>r.cu);
   const selC=$("selCust");
   selC.innerHTML='<option value="">كل العملاء</option>'+
@@ -691,6 +927,43 @@ function init(){
   $("btnReset").onclick=resetFilters;
   $("btnPrint").onclick=()=>window.print();
   $("bannerX").onclick=()=>$("banner").style.display="none";
+  /* order search wiring */
+  const inpWo=$("inpWo"), tblInpWo=$("tblInpWo");
+  const btnWoClear=$("btnWoClear"), btnTblWoClear=$("btnTblWoClear");
+  let woTimer=null;
+  const onWoType=e=>{
+    const val=e.target.value;
+    if(btnWoClear)btnWoClear.style.display=val?"inline-block":"none";
+    if(btnTblWoClear)btnTblWoClear.style.display=val?"inline-block":"none";
+    clearTimeout(woTimer);
+    woTimer=setTimeout(()=>{setWoSearch(val);},100);
+  };
+  const onWoCommit=e=>{
+    clearTimeout(woTimer);
+    setWoSearch(e.target.value);
+  };
+  if(inpWo){
+    inpWo.addEventListener("input",onWoType);
+    inpWo.addEventListener("change",onWoCommit);
+    inpWo.addEventListener("keydown",e=>{if(e.key==="Enter")onWoCommit(e);});
+  }
+  if(tblInpWo){
+    tblInpWo.addEventListener("input",onWoType);
+    tblInpWo.addEventListener("change",onWoCommit);
+    tblInpWo.addEventListener("keydown",e=>{if(e.key==="Enter")onWoCommit(e);});
+  }
+  if(btnWoClear)btnWoClear.onclick=()=>{
+    if(inpWo)inpWo.value="";
+    if(tblInpWo)tblInpWo.value="";
+    setWoSearch("");
+    if(inpWo)inpWo.focus();
+  };
+  if(btnTblWoClear)btnTblWoClear.onclick=()=>{
+    if(inpWo)inpWo.value="";
+    if(tblInpWo)tblInpWo.value="";
+    setWoSearch("");
+    if(tblInpWo)tblInpWo.focus();
+  };
   /* month controls */
   $("selMonth").onchange=e=>{
     const v=e.target.value;
@@ -751,4 +1024,4 @@ function init(){
   }
 }
 if(typeof document!=="undefined"){document.addEventListener("DOMContentLoaded",init);}
-globalThis.__APP__={DATA,ORIG_DATA,CONFIG,ORIG_CONFIG,PLAN,PLAN_AL,PLAN_CU,MDAYS,HAS_PLAN,state,computeKPIs,filteredRows,groupTons,groupCount,topFrom,parseErpRows,syncPlanVars,cfgMonthKey,cfgMonthNum,monthLabel,storeMonth,loadMonthEntry,getMONTHS:()=>MONTHS,getACTIVE:()=>ACTIVE};
+globalThis.__APP__={DATA,ORIG_DATA,CONFIG,ORIG_CONFIG,PLAN,PLAN_AL,PLAN_CU,MDAYS,HAS_PLAN,state,computeKPIs,filteredRows,groupTons,groupCount,topFrom,parseErpRows,syncPlanVars,cfgMonthKey,cfgMonthNum,monthLabel,storeMonth,loadMonthEntry,getMONTHS:()=>MONTHS,getACTIVE:()=>ACTIVE,normWo,setWoSearch,buildWoDatalist,renderWoSummary};
